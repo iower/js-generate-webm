@@ -1,0 +1,172 @@
+<style>
+
+* {
+	font-family: sans-serif;
+	box-sizing: border-box;
+}
+
+canvas {
+	outline: 1px dashed red;
+}
+
+.frame {
+	margin: 10px 0;
+	border: 1px solid gray;
+	padding: 5px;
+	background-color: #eee;
+}
+
+#progress {
+	margin: 5px 0;
+	display: block;
+}
+
+a:not([href]) {
+	display:none;
+}
+
+</style>
+
+
+<div class="frame">
+	<div class="frame-title">Sound</div>
+	<br>
+	<div>
+		<button id="startSoundButton" onclick="sound()">Create sound</button>
+		<button id="stopSoundButton" onclick="stopSound()">Pause</button>
+	</div>
+	<br>
+	<div>
+		<a id="download-sound" download="out.wav">Download WAV</a>
+	</div>
+</div>
+
+<div class="frame">
+	<div class="frame-title">Video</div>
+	<br>
+	<div>
+		<button id="compileButton" onclick="compileVideo()">Create video</button>
+		<button id="stopCompileButton" onclick="stopCompileVideo()">Pause</button>
+	</div>
+	<br>
+	<video id="video" width="256" height="144" controls autoplay loop></video>
+	<progress id="progress" value="0" max="600" min="0" style="width: 256px"></progress>
+	<div id="status">Idle</div>
+	<br>
+	<div>
+		<a id="download" download="out.webm">Download WebM</a>
+	</div>
+</div>
+
+<br>
+
+<canvas id="canvas" width="1920" height="1080"></canvas>
+
+<script src="lib/whammy.js"></script>
+<script src="scene.js"></script>
+<script src="lib/recorderjs-modified.js"></script>
+<script src="sound.js"></script>
+<script>
+
+const limits = {
+	unverified: 60 * 15,
+	verified: 60 * 60 * 12, // or 120Gb
+};
+
+const resolutions = {
+	'4K': [3840, 2160],
+	'2K': [2560, 1440],
+	'1080p': [1920, 1080],
+	'720p': [1280, 720],
+	'480p': [854, 480],
+	'360p': [640, 360],
+	'240p': [426, 240],
+};
+
+const previewResolution = '240p';
+const compileResolution = '1080p';
+
+
+const settings = {
+	duration: 1, //s
+	fps: 30,
+	width: resolutions[compileResolution][0],
+	height: resolutions[compileResolution][1],
+	previewWidth: resolutions[previewResolution][0],
+	previewHeight: resolutions[previewResolution][1],
+};
+
+const canvas = document.getElementById('canvas');
+canvas.width = settings.width;
+canvas.height = settings.height;
+const ctx = canvas.getContext('2d');
+
+const requestAnimationFrame = window.requestAnimationFrame || window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame || window.msRequestAnimationFrame;
+
+const setStatus = (status) => document.getElementById('status').innerHTML = status;
+
+
+const timeHumanized = (timeMs) => {
+	const timeS = (timeMs / 1000).toFixed(0);
+	const s = timeS % 60;
+	const m = Math.floor(timeS / 60 % 60);
+	const h = Math.floor(timeS / 60 / 60);
+	return `${h}h ${m}m ${s}s`;
+}
+
+
+const video = new Whammy.Video(settings.fps);
+const progress = document.getElementById('progress');
+
+const numberOfFrames = settings.duration * settings.fps;
+let currentFrame = 0;
+let isCompiling = false;
+let startedAt;
+
+const compileVideo = () => {
+	startedAt = +new Date;
+	progress.max = numberOfFrames;
+	isCompiling = true;
+	nextFrame();
+};
+
+const stopCompileVideo = () => {
+	isCompiling = false;
+};
+
+const nextFrame = () => {
+	if (!isCompiling) {
+		return;
+	}
+	if (currentFrame < numberOfFrames) {
+		currentFrame++;
+		const completeness = currentFrame / numberOfFrames;
+		const timeWaited  = (+new Date - startedAt);
+		const expectedTime = (1 - completeness) * timeWaited / completeness;
+		setStatus(`Drawing... [${currentFrame}/${numberOfFrames}], ${(completeness * 100).toFixed(0)}%, wait ${timeHumanized(expectedTime)}`);
+		progress.value++;
+		const time = currentFrame / settings.fps;
+		const context = draw(ctx, time);
+		video.add(context);
+		requestAnimationFrame(nextFrame);
+	} else {
+		requestAnimationFrame(finalizeVideo);
+	}
+};
+
+const finalizeVideo = () => {
+	setStatus('Compiling...');
+
+	const start_time = +new Date;
+	const output = video.compile();
+	const end_time = +new Date;
+	const url = webkitURL.createObjectURL(output);
+
+	document.getElementById('video').src = url;
+	document.getElementById('download').style.display = '';
+	document.getElementById('download').href = url;
+
+	document.getElementById('status').innerHTML = `Compiled in ${timeHumanized(end_time - start_time)}, ${(output.size / 1024 / 1024).toFixed(1)} MB`;
+};
+
+</script>
